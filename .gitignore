@@ -55,6 +55,7 @@ Thumbs.db
 
 # Kiro IDE
 .kiro/
+!.kiro/specs/
 
 # Application specific
 config/user_config.json
