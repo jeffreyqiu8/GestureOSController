@@ -31,6 +31,35 @@ GestureOSController/
 
 ## Installation
 
+### Prerequisites
+
+**Important:** MediaPipe requires Python 3.8-3.12. Python 3.13 is not yet supported.
+
+If you have Python 3.13, you can use `pyenv` to install Python 3.12:
+
+**Windows (using pyenv-win):**
+```powershell
+# Install pyenv-win
+Invoke-WebRequest -UseBasicParsing -Uri "https://raw.githubusercontent.com/pyenv-win/pyenv-win/master/pyenv-win/install-pyenv-win.ps1" -OutFile "./install-pyenv-win.ps1"
+./install-pyenv-win.ps1
+
+# Install Python 3.12
+pyenv install 3.12.10
+pyenv local 3.12.10
+```
+
+**Linux/Mac:**
+```bash
+# Install pyenv (if not already installed)
+curl https://pyenv.run | bash
+
+# Install Python 3.12
+pyenv install 3.12.10
+pyenv local 3.12.10
+```
+
+### Setup Steps
+
 1. **Clone the repository** (or navigate to the project directory)
 
 2. **Create a virtual environment** (recommended):
@@ -55,10 +84,54 @@ GestureOSController/
 
 ## Usage
 
-Run the application with default settings:
+### Running the GUI Application
+
+Launch the graphical user interface:
+```bash
+python src/gui.py
+```
+
+Or run the main entry point (when implemented):
 ```bash
 python main.py
 ```
+
+### Using the Application
+
+1. **Start the System**
+   - Click the "Start" button to initialize the webcam and begin hand tracking
+   - The video feed will display with hand landmarks overlaid
+
+2. **Record a New Gesture**
+   - Click "Record Gesture" to begin recording
+   - Position your hand in front of the camera
+   - Click "Start Recording" in the dialog
+   - Perform your gesture and hold it steady for the recording duration (default: 3 seconds)
+   - Enter a unique name for your gesture
+   - Select an action to assign (Launch App, Keystroke, Media Control, or System Control)
+   - Configure the action parameters
+   - Click OK to save
+
+3. **Recognize Gestures**
+   - Once gestures are recorded, the system automatically recognizes them in real-time
+   - Recognized gestures are displayed on the video feed with confidence scores
+   - The assigned action is executed when a gesture is recognized
+
+4. **Manage Gestures**
+   - View all saved gestures in the right panel
+   - Select a gesture to edit or delete
+   - Click "Edit" to modify the gesture name or assigned action
+   - Click "Delete" to remove a gesture (with confirmation)
+
+5. **Configure Settings**
+   - Click "Settings" to adjust system parameters
+   - Modify similarity threshold, recording duration, FPS, and other options
+   - Changes take effect immediately
+
+6. **Stop the System**
+   - Click "Stop" to halt the webcam and gesture recognition
+
+### Command Line Options
 
 Run with custom configuration:
 ```bash
@@ -110,7 +183,7 @@ This project is currently under development. The basic project structure has bee
 
 ## Requirements
 
-- Python 3.8 or higher
+- **Python 3.8-3.12** (Python 3.13 not yet supported by MediaPipe)
 - Webcam
 - Windows/Linux/Mac OS
 

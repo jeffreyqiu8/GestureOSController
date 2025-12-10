@@ -7,7 +7,8 @@ and frame delivery.
 import cv2
 import numpy as np
 import logging
-from typing import Optional
+import time
+from typing import Optional, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,14 @@ class VideoCapture:
         self._fps = fps
         self._capture: Optional[cv2.VideoCapture] = None
         self._is_running = False
+        
+        # Reconnection state
+        self._disconnected = False
+        self._reconnect_attempts = 0
+        self._max_reconnect_attempts = 10
+        self._last_reconnect_time = 0.0
+        self._reconnect_backoff_base = 1.0  # Base delay in seconds
+        self._status_callback: Optional[Callable[[str], None]] = None
     
     def start(self) -> bool:
         """
@@ -90,9 +99,13 @@ class VideoCapture:
         """
         Retrieve the current frame from the webcam.
         
+        Automatically attempts reconnection if the camera becomes disconnected.
+        
         Returns:
             Optional[np.ndarray]: The captured frame as a numpy array (BGR format),
                                  or None if capture is not running or frame read fails
+        
+        Requirements: 9.2
         """
         if not self._is_running or self._capture is None:
             logger.warning("Attempted to get frame while capture is not running")
@@ -102,13 +115,41 @@ class VideoCapture:
             ret, frame = self._capture.read()
             
             if not ret or frame is None:
-                logger.warning("Failed to read frame from camera")
+                # Camera disconnection detected
+                if not self._disconnected:
+                    logger.warning("Camera disconnection detected")
+                    self._disconnected = True
+                    self._reconnect_attempts = 0
+                    self._notify_status("Camera disconnected - attempting reconnection...")
+                
+                # Attempt reconnection
+                if self._attempt_reconnection():
+                    # Successfully reconnected, try reading again
+                    ret, frame = self._capture.read()
+                    if ret and frame is not None:
+                        return frame
+                
                 return None
+            
+            # Successfully read frame - reset disconnection state if we were disconnected
+            if self._disconnected:
+                logger.info("Camera reconnected successfully")
+                self._disconnected = False
+                self._reconnect_attempts = 0
+                self._notify_status("Camera reconnected successfully")
             
             return frame
             
         except Exception as e:
             logger.exception(f"Error reading frame: {e}")
+            
+            # Mark as disconnected and attempt reconnection
+            if not self._disconnected:
+                self._disconnected = True
+                self._reconnect_attempts = 0
+                self._notify_status("Camera error - attempting reconnection...")
+            
+            self._attempt_reconnection()
             return None
     
     def is_running(self) -> bool:
@@ -139,6 +180,117 @@ class VideoCapture:
         if self._capture is not None and self._is_running:
             self._capture.set(cv2.CAP_PROP_FPS, self._fps)
             logger.info(f"FPS updated to {self._fps}")
+    
+    def set_status_callback(self, callback: Callable[[str], None]) -> None:
+        """
+        Set a callback function for status notifications.
+        
+        Args:
+            callback: Function that takes a status message string
+        """
+        self._status_callback = callback
+    
+    def _notify_status(self, message: str) -> None:
+        """
+        Notify status change via callback if set.
+        
+        Args:
+            message: Status message to send
+        """
+        if self._status_callback:
+            self._status_callback(message)
+    
+    def _attempt_reconnection(self) -> bool:
+        """
+        Attempt to reconnect to the camera with exponential backoff.
+        
+        Uses exponential backoff strategy: delay = base * (2 ^ attempt_number)
+        
+        Returns:
+            bool: True if reconnection succeeded, False otherwise
+        
+        Requirements: 9.2
+        """
+        # Check if we've exceeded max attempts
+        if self._reconnect_attempts >= self._max_reconnect_attempts:
+            logger.error(f"Max reconnection attempts ({self._max_reconnect_attempts}) reached")
+            self._notify_status(f"Camera reconnection failed after {self._max_reconnect_attempts} attempts")
+            return False
+        
+        # Calculate backoff delay
+        current_time = time.time()
+        backoff_delay = self._reconnect_backoff_base * (2 ** self._reconnect_attempts)
+        
+        # Check if enough time has passed since last attempt
+        if current_time - self._last_reconnect_time < backoff_delay:
+            # Not enough time has passed, skip this attempt
+            return False
+        
+        # Update reconnection state
+        self._reconnect_attempts += 1
+        self._last_reconnect_time = current_time
+        
+        logger.info(f"Attempting camera reconnection (attempt {self._reconnect_attempts}/{self._max_reconnect_attempts}, "
+                   f"backoff: {backoff_delay:.1f}s)")
+        self._notify_status(f"Reconnecting... (attempt {self._reconnect_attempts}/{self._max_reconnect_attempts})")
+        
+        try:
+            # Release existing capture if any
+            if self._capture is not None:
+                self._capture.release()
+                self._capture = None
+            
+            # Try to reinitialize the camera
+            self._capture = cv2.VideoCapture(self._camera_index)
+            
+            if not self._capture.isOpened():
+                logger.warning(f"Reconnection attempt {self._reconnect_attempts} failed: camera not opened")
+                return False
+            
+            # Set the FPS
+            self._capture.set(cv2.CAP_PROP_FPS, self._fps)
+            
+            # Verify the camera is working by reading a test frame
+            ret, frame = self._capture.read()
+            if not ret or frame is None:
+                logger.warning(f"Reconnection attempt {self._reconnect_attempts} failed: cannot read frame")
+                self._capture.release()
+                self._capture = None
+                return False
+            
+            # Success!
+            logger.info(f"Camera reconnected successfully on attempt {self._reconnect_attempts}")
+            self._disconnected = False
+            self._reconnect_attempts = 0
+            self._notify_status("Camera reconnected successfully")
+            return True
+            
+        except Exception as e:
+            logger.exception(f"Error during reconnection attempt {self._reconnect_attempts}: {e}")
+            if self._capture is not None:
+                self._capture.release()
+                self._capture = None
+            return False
+    
+    def is_disconnected(self) -> bool:
+        """
+        Check if the camera is currently disconnected.
+        
+        Returns:
+            bool: True if disconnected, False otherwise
+        """
+        return self._disconnected
+    
+    def reset_reconnection_state(self) -> None:
+        """
+        Reset the reconnection state.
+        
+        Useful for manual reconnection attempts or after fixing camera issues.
+        """
+        self._disconnected = False
+        self._reconnect_attempts = 0
+        self._last_reconnect_time = 0.0
+        logger.info("Reconnection state reset")
     
     def __del__(self):
         """Cleanup: ensure camera is released when object is destroyed."""

@@ -17,6 +17,12 @@ class ActionType(Enum):
     SYSTEM_CONTROL = "system_control"
 
 
+class ExecutionMode(Enum):
+    """Enumeration of action execution modes."""
+    TRIGGER_ONCE = "trigger_once"  # Execute once when gesture is first detected
+    HOLD_REPEAT = "hold_repeat"    # Execute repeatedly while gesture is held
+
+
 @dataclass
 class Action:
     """
@@ -25,9 +31,11 @@ class Action:
     Attributes:
         type: The type of action (from ActionType enum)
         data: Dictionary containing action-specific parameters
+        execution_mode: How the action should be executed (trigger once or hold to repeat)
     """
     type: ActionType
     data: Dict[str, Any]
+    execution_mode: ExecutionMode = ExecutionMode.TRIGGER_ONCE
     
     def to_json(self) -> str:
         """
@@ -38,7 +46,8 @@ class Action:
         """
         return json.dumps({
             'type': self.type.value,
-            'data': self.data
+            'data': self.data,
+            'execution_mode': self.execution_mode.value
         })
     
     @classmethod
@@ -55,7 +64,8 @@ class Action:
         obj = json.loads(json_str)
         return cls(
             type=ActionType(obj['type']),
-            data=obj['data']
+            data=obj['data'],
+            execution_mode=ExecutionMode(obj.get('execution_mode', 'trigger_once'))
         )
 
 
@@ -158,7 +168,8 @@ class Gesture:
             'embedding': self.embedding.tolist(),
             'action': {
                 'type': self.action.type.value,
-                'data': self.action.data
+                'data': self.action.data,
+                'execution_mode': self.action.execution_mode.value
             },
             'created_at': self.created_at.isoformat()
         }
@@ -179,7 +190,8 @@ class Gesture:
             embedding=np.array(data['embedding']),
             action=Action(
                 type=ActionType(data['action']['type']),
-                data=data['action']['data']
+                data=data['action']['data'],
+                execution_mode=ExecutionMode(data['action'].get('execution_mode', 'trigger_once'))
             ),
             created_at=datetime.fromisoformat(data['created_at'])
         )
